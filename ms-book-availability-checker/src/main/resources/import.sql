@@ -1,0 +1,10 @@
+INSERT INTO books (id, name, price, stock) VALUES ('a3f60d90-e52b-4a97-a6dd-81ff7e5b4101', 'Clean Code', 45.90, 12) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('bc8b723e-bcef-4eb8-90af-6d299b49e022', 'Effective Java', 54.50, 8) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('d49c54fe-9ea6-43c8-bd0b-1ea2fbc7bc33', 'Domain-Driven Design', 62.00, 5) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('e0f7ba2c-3515-4c54-a1be-80bc3f274b44', 'Refactoring', 49.99, 10) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('f1ae8e65-9bdc-4345-8f97-b3e1ac6e2c55', 'Design Patterns', 58.75, 7) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('18b0dc5d-b686-47a5-8a85-d0e0f8f4d766', 'The Pragmatic Programmer', 42.25, 15) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('2fb5a0c8-d741-4c4a-9ea9-4a3c1d30b977', 'Spring in Action', 39.90, 6) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('42f8e198-501c-42e8-bbcc-9365a2edc088', 'Kubernetes Up and Running', 51.40, 9) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('59c0f6b2-8f0d-4c54-bbeb-765d8aa4d199', 'Microservices Patterns', 56.30, 4) ON CONFLICT (id) DO NOTHING;
+INSERT INTO books (id, name, price, stock) VALUES ('6da791e4-241a-4c9d-8d0e-e40af745e2aa', 'Building Event-Driven Microservices', 47.80, 11) ON CONFLICT (id) DO NOTHING;

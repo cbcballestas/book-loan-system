@@ -1,0 +1,238 @@
+services:
+  ### Kafka, Zookeeper, and Kafka UI
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    container_name: zookeeper-dev
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - library-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.0.1
+    container_name: kafka-dev
+    ports:
+      # To learn about configuring Kafka for access across networks see
+      # https://www.confluent.io/blog/kafka-client-cannot-connect-to-broker-on-aws-on-docker-etc/
+      - "29092:29092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENERS: EXTERNAL_SAME_HOST://:29092,INTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL_SAME_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL_SAME_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+    networks:
+      - library-network
+    healthcheck:
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8081:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_JMXPORT: 9997
+    networks:
+      - library-network
+
+  # MongoDB for Auditor Service
+  mongodb-auditor:
+    image: mongo:7.0
+    container_name: mongodb-auditor
+    ports:
+      - "27018:27017"
+    environment:
+      MONGO_INITDB_DATABASE: audit_log_db
+    volumes:
+      - mongodb-auditor-data:/data/db
+    networks:
+      - library-network
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL for book services
+  pgsql_books_bd:
+    image: postgres:16
+    container_name: pgsql_books_bd
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: books_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    networks:
+      - library-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d books_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MySQL for Loans Service
+  mysql-loans:
+    image: mysql:8.0
+    container_name: mysql-loans
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: loans_db
+      MYSQL_USER: loans_user
+      MYSQL_PASSWORD: loans_pass
+    volumes:
+      - mysql-loans-data:/var/lib/mysql
+    networks:
+      - library-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MySQL backup service for Loans Service
+  mysql-loans-backup:
+    image: mysql:8.0
+    container_name: mysql-loans-backup
+    ports:
+      - "3305:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: loans_db_bk
+      MYSQL_USER: loans_user
+      MYSQL_PASSWORD: loans_pass
+    volumes:
+      - mysql-loans-backup-data:/var/lib/mysql
+    networks:
+      - library-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # QA environment MySQL for Loans Service
+  mysql-loans-qa:
+    image: mysql:8.0
+    container_name: mysql-loans-qa
+    ports:
+      - "3309:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: loans_db_qa
+      MYSQL_USER: loans_user
+      MYSQL_PASSWORD: loans_pass
+    volumes:
+      - mysql-loans-qa-data:/var/lib/mysql
+    networks:
+      - library-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Book catalog and availability API
+  ms-book-availability-checker:
+    build:
+      context: ./ms-book-availability-checker
+      dockerfile: src/main/docker/Dockerfile.jvm
+    image: quarkus/ms-book-availability-checker-jvm
+    container_name: ms-book-availability-checker
+    ports:
+      - "8082:8082"
+    environment:
+      QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://pgsql_books_bd:5432/books_db
+      QUARKUS_DATASOURCE_USERNAME: postgres
+      QUARKUS_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      pgsql_books_bd:
+        condition: service_healthy
+    networks:
+      - library-network
+
+  # Loan API
+  ms-book-loan:
+    build:
+      context: ./ms-book-loan
+      dockerfile: src/main/docker/Dockerfile.jvm
+    image: quarkus/ms-book-loan-jvm
+    container_name: ms-book-loan
+    ports:
+      - "8083:8083"
+    environment:
+      DB_HOST: mysql-loans
+      DB_PORT: 3306
+      DB_BACKUP_HOST: mysql-loans-backup
+      DB_BACKUP_PORT: 3306
+      LOANS_DB_USERNAME: loans_user
+      LOANS_DB_PASSWORD: loans_pass
+      QUARKUS_REST_CLIENT_BOOK_AVAILABILITY_CHECKER_API_URL: http://ms-book-availability-checker:8082
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_SIGN_KEY_LOCATION: file:///opt/app/jwt/privateKey.pem
+      JWT_PUBLIC_KEY_LOCATION: file:///opt/app/jwt/publicKey.pem
+    volumes:
+      - ./ms-book-loan/jwt/rsa.privateKey.pem:/opt/app/jwt/privateKey.pem:ro
+      - ./ms-book-loan/jwt/rsa.publicKey.pem:/opt/app/jwt/publicKey.pem:ro
+    depends_on:
+      mysql-loans:
+        condition: service_healthy
+      mysql-loans-backup:
+        condition: service_healthy
+      ms-book-availability-checker:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    networks:
+      - library-network
+
+  # Audit consumer API
+  ms-auditor:
+    build:
+      context: ./ms-auditor
+      dockerfile: src/main/docker/Dockerfile.jvm
+    image: quarkus/ms-auditor-jvm
+    container_name: ms-auditor
+    ports:
+      - "8080:8080"
+    environment:
+      QUARKUS_MONGODB_CONNECTION_STRING: mongodb://mongodb-auditor:27017
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      mongodb-auditor:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - library-network
+
+networks:
+  library-network:
+    driver: bridge
+
+volumes:
+  mongodb-auditor-data:
+  postgresql-data:
+  mysql-loans-data:
+  mysql-loans-backup-data:
+  mysql-loans-qa-data:
